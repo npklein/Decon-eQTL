@@ -34,12 +34,7 @@ public class CommandLineOptions {
 	private Boolean noConsole = false;
 	private Boolean outputPredictedExpression = false;
 	private String genotypeConfigurationType = "all";
-	private Boolean useBaseModel = false;
-	private Boolean calculatePvalues = true; 
-	private Boolean selectMostBetas = false; 
-	private Boolean outputBestBetas = false;
-	private Boolean useOLS = false;
-
+	
 	/**
 	 * Standard command line parsing.
 	 * 
@@ -77,26 +72,16 @@ public class CommandLineOptions {
 				.build();
 		Option outfile = Option.builder("of").required(false).hasArg().longOpt("outfile").desc("Outfile name of deconvolution results (will be written in outfolder)")
 				.argName("file").build();
-		Option calculatePvaluesOption = Option.builder("p").required(false).longOpt("calculate_pvalues")
-				.desc("Calculate p-values of interaction term").build();
 		Option roundDosage = Option.builder("r").required(false).longOpt("round_dosage")
 				.desc("Round the dosage to the closest int").build();
 		Option onlyOutputSignificantOption = Option.builder("s").required(false).longOpt("output_significant_only")
 				.desc("Only output results that are significant in at least one celltype.").build();
 		Option skipGenotypes = Option.builder("sg").required(false).longOpt("skip_genotypes")
 				.desc("Skip genotypes that are in the GeneSNP pair file but not in the genotype file.").build();
-		Option selectMostBetasOption = Option.builder("sm").required(false).longOpt("select_most_betas")
-				.desc("First select model with most beta values > 0, then minimize MLE if there are ties").build();
-		Option outputBestBetasOption = Option.builder("sb").required(false).longOpt("output_best_betas")
-				.desc("Output the best betas values").build();
 		Option snpsToTestOption = Option.builder("sn").required(true).hasArg().longOpt("snpsToTest").argName("file")
 				.desc("Tab delimited file with first column gene name, second column SNP name. Need to match with names from genotype and expression files.").build();
 		Option doTestRun = Option.builder("t").required(false).longOpt("test_run")
 				.desc("Only run deconvolution for 100 QTLs for quick test run").build();
-		Option useBaseModelOption = Option.builder("u").required(false).longOpt("useBaseModel")
-				.desc("Compare each celltype against base model").build();
-		Option useOlsOption = Option.builder("uo").required(false).longOpt("use_OLS")
-				.desc("use OLS option").build();
 		Option wholeBloodQTL = Option.builder("w").required(false).longOpt("whole_blood_qtl")
 				.desc("Add whole blood eQTL (pearson correlation genotypes and expression)").build();
 		options.addOption(onlyOutputSignificantOption);
@@ -118,12 +103,6 @@ public class CommandLineOptions {
 		options.addOption(noConsoleOption);
 		options.addOption(outputPredictedExpressionOption);
 		options.addOption(genotypeConfigurationTypeOption);
-		options.addOption(useBaseModelOption);
-		options.addOption(calculatePvaluesOption);
-		options.addOption(selectMostBetasOption);
-		options.addOption(outputBestBetasOption);
-		options.addOption(useOlsOption); 
-
 		CommandLineParser cmdLineParser = new DefaultParser();
 		try{
 			CommandLine cmdLine = cmdLineParser.parse(options, args);
@@ -179,16 +158,6 @@ public class CommandLineOptions {
 		genotypeFile = cmdLine.getOptionValue("genotype");
 		cellcountFile = cmdLine.getOptionValue("cellcount");
 		snpsToTestFile = cmdLine.getOptionValue("snpsToTest");
-		
-		if(cmdLine.hasOption("calculate_pvalues")){
-			calculatePvalues = !calculatePvalues;
-		}
-		
-		if (cmdLine.hasOption("use_OLS")){
-			useOLS = !useOLS;
-		}
-			
-		
 		// check if all input files exist before starting the program to return error as early as possible
 		if(!new File(expressionFile).exists() || new File(expressionFile).isDirectory()) { 
 		    throw new FileNotFoundException(expressionFile+" does not exist");
@@ -228,17 +197,6 @@ public class CommandLineOptions {
 			outputPredictedExpression = !outputPredictedExpression;
 		}
 
-		if(cmdLine.hasOption("useBaseModel")){
-			useBaseModel = !useBaseModel;
-		}
-		
-		if(cmdLine.hasOption("select_most_betas")){
-			selectMostBetas = !selectMostBetas;
-		}
-		if(cmdLine.hasOption("output_best_betas")){
-			outputBestBetas = !outputBestBetas;
-		}
-		
 	}
 	
 
@@ -264,7 +222,7 @@ public class CommandLineOptions {
 	    Date date = new Date();
 	    DeconvolutionLogger.log.info("Starting deconvolution");
 	    DeconvolutionLogger.log.info(dateFormat.format(date));
-	    DeconvolutionLogger.log.info("Running deconvolution version 0.7.1, src updated at 19-03-2018");
+	    DeconvolutionLogger.log.info("Running deconvolution version 0.8.1, compiled 28-MAR-2017");
 	    DeconvolutionLogger.log.info("======= DECONVOLUTION paramater settings =======");
 		DeconvolutionLogger.log.info(String.format("Expression file (-e): %s", expressionFile));
 		DeconvolutionLogger.log.info(String.format("Genotype file (-g): %s", genotypeFile));
@@ -283,11 +241,6 @@ public class CommandLineOptions {
 		DeconvolutionLogger.log.info(String.format("Do not ouput logging info to console (-no): %s", noConsole));
 		DeconvolutionLogger.log.info(String.format("Write predicted expression to output file (-oe): %s", outputPredictedExpression));
 		DeconvolutionLogger.log.info(String.format("Genotype configuration to use (-gc): %s", genotypeConfigurationType));
-		DeconvolutionLogger.log.info(String.format("Use the base model for comparison (-u): %s", useBaseModel));
-		DeconvolutionLogger.log.info(String.format("Calculate a p-value: %s", calculatePvalues));
-		DeconvolutionLogger.log.info(String.format("Select most betas (-sm): %s", selectMostBetas));
-		DeconvolutionLogger.log.info(String.format("Output best betas (-sb): %s", outputBestBetas));
-		DeconvolutionLogger.log.info(String.format("Use OLS(-uo): %s", useOLS));
 		DeconvolutionLogger.log.info("=================================================");
 	}
 	public String getExpressionFile(){
@@ -311,10 +264,6 @@ public class CommandLineOptions {
 	}
 	public Boolean getRoundDosage(){
 		return(roundDosage);
-	}
-	
-	public Boolean getCalculatePvalues(){
-		return(calculatePvalues);
 	}
 
 	public Boolean getAllDosages(){
@@ -355,22 +304,6 @@ public class CommandLineOptions {
 		return genotypeConfigurationType;
 	}
 	
-	public Boolean getUseBaseModel(){
-		return useBaseModel;
-	}
-
-	public Boolean getSelectMostBetas(){
-		return(selectMostBetas);
-	}
-	
-	public Boolean getOutputBestBetas(){
-		return(outputBestBetas);
-	}
-	
-	public Boolean getUseOLS(){
-		return(useOLS);
-	}
-		
 }
 
 

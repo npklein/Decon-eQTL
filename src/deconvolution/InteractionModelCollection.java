@@ -29,36 +29,19 @@ public class InteractionModelCollection {
 	private List<String> genotypeConfigurationsFullModel = new ArrayList<String> ();
 	private List<String> genotypeConfigurationsCtModel = new ArrayList<String> ();
 	private HashMap<String, HashMap<String,String>> ctModelByGenotypeConfiguration = new HashMap<String, HashMap<String, String>>();
-	private Double fullModelAIC;
-	private HashMap<String, Double> ctModelAICs = new HashMap<String, Double>();
 	private HashMap<String, String> ctModelsSameGenotypeConfigurationBestFullModel = new HashMap<String, String>();
 	private HashMap<String, String> modelCelltype = new HashMap<String, String>();
 	private HashMap<String, ArrayList<String>> genotypeConfigMap = new HashMap<String, ArrayList<String>>();
 	private List<String> celltypes = new ArrayList<String>();
 	private List<String> sampleNames = new ArrayList<String>();
-	private boolean useBaseModel;
 	private HashMap<String, String> bestFullModelPerCelltype = new HashMap<String, String>();
-	private double[] bestBetas;
-	private Boolean useOLS = false;
-
 
 	/*
 	 * Have to initialize instance with if NNLS or OLS will be used, and for that we need cellCounts
 	 */
-	public InteractionModelCollection(CellCount cellCount, String genotypeConfigurationType, boolean useBaseModel, Boolean useOLS) throws IllegalAccessException{
-		this.useOLS = useOLS;
+	public InteractionModelCollection(CellCount cellCount, String genotypeConfigurationType) throws IllegalAccessException{
 		setCellCount(cellCount);
-		this.useBaseModel = useBaseModel;
 		makeConfigurations(genotypeConfigurationType);
-		this.bestBetas = new double[cellCount.getNumberOfCelltypes()*2];
-		for(int i = 0; i < cellCount.getNumberOfCelltypes()*2; ++i){
-			bestBetas[i] = 0;
-		}
-
-	}
-
-	private boolean getUseBaseModel(){
-		return(this.useBaseModel);
 	}
 
 	public String getCtModelName(String celltype){
@@ -95,10 +78,6 @@ public class InteractionModelCollection {
 		this.cellCount = cellCount;
 		celltypes = cellCount.getAllCelltypes();
 		sampleNames = cellCount.getSampleNames();
-	}
-
-	public boolean getUseOLS(){
-		return(this.useOLS);
 	}
 
 	public CellCount getCellCount() throws IllegalAccessException{
@@ -177,10 +156,6 @@ public class InteractionModelCollection {
 		this.bestFullModelName = modelName;
 	}
 
-	private void setBestFullModel(String modelName, String celltypeName){
-		this.bestFullModelPerCelltype.put(celltypeName, modelName);
-	}
-
 	public InteractionModel getBestFullModel() throws IllegalAccessException{
 		return(this.getInteractionModel(this.bestFullModelName));
 	}
@@ -194,17 +169,13 @@ public class InteractionModelCollection {
 		this.ctModelsSameGenotypeConfigurationBestFullModel.put(celltype, modelName);
 	}
 
-	public String getCtModelSameGenotypeConfigurationAsBestFullModel(String celltype, Boolean useBaseModel) throws IllegalAccessException{
+	public String getCtModelSameGenotypeConfigurationAsBestFullModel(String celltype) throws IllegalAccessException{
 		if(!this.ctModelsSameGenotypeConfigurationBestFullModel.containsKey(celltype)){
 			InteractionModel bestFullModel;
-			if(useBaseModel){
-				bestFullModel = this.getBestFullModel(celltype);
-			}
-			else{
-				bestFullModel = this.getBestFullModel();
-				String ctModel =  this.getCtModelsByGenotypeConfiguration(bestFullModel.getGenotypeConfiguration()).get(celltype);
-				setCtModelSameGenotypeConfigurationAsBestFullModel(celltype, ctModel);
-			}
+
+			bestFullModel = this.getBestFullModel();
+			String ctModel =  this.getCtModelsByGenotypeConfiguration(bestFullModel.getGenotypeConfiguration()).get(celltype);
+			setCtModelSameGenotypeConfigurationAsBestFullModel(celltype, ctModel);
 
 		}
 		return(this.ctModelsSameGenotypeConfigurationBestFullModel.get(celltype));
@@ -219,48 +190,6 @@ public class InteractionModelCollection {
 		return(this.getInteractionModel(this.bestCtModel.get(celltype)));
 	}
 
-	private HashMap<String, String> getCtModelsWithConfiguration(String genotypConfiguration) throws IllegalAccessException{
-		return(this.ctModelByGenotypeConfiguration.get(this.getBestFullModel().getGenotypeConfiguration()));
-	}
-
-	/*
-	 * Set the AIC of full model and ct model, also calculate the delta between the two
-	 * If base model == true, AIC has to be calculated for fullModel for every celltype
-	 */
-	public void setAIC(Boolean useBaseModel) throws IllegalAccessException{
-		InteractionModel bestFullModel = null;
-		HashMap<String, String> cellTypeCtModel = new HashMap<String, String>();
-		if(!useBaseModel){
-			bestFullModel = getBestFullModel();
-			bestFullModel.setAIC();
-			this.fullModelAIC = bestFullModel.getAIC();
-			cellTypeCtModel = getCtModelsWithConfiguration(bestFullModel.getGenotypeConfiguration());
-		}
-		for(String celltype : this.getCellCount().getAllCelltypes()){
-			if(useBaseModel){
-				bestFullModel = getBestFullModel(celltype);
-				bestFullModel.setAIC();
-			}
-			String modelName = cellTypeCtModel.get(celltype);
-
-			InteractionModel ctModel = this.getInteractionModel(modelName);
-			ctModel.setAIC();
-			this.ctModelAICs.put(modelName,ctModel.getAIC());
-			ctModel.setAICdelta(bestFullModel.getAIC());
-		}
-	}
-
-	public double getFullModelAIC() throws IllegalAccessException{
-		return(fullModelAIC);
-	}
-
-	public double getCtModelAIC(String ctModelName) throws IllegalAccessException{
-		return(ctModelAICs.get(ctModelName));
-	}
-
-	public double[] getBestBetas(){
-		return(this.bestBetas);
-	}
 	/*
 	 * Add interaction model to the collections
 	 */
@@ -282,151 +211,51 @@ public class InteractionModelCollection {
 	 * Go through all full models, calculate the regression statistics and 
 	 * select the model with the highest R2 as the new full model
 	 */
-	public void findBestFullModel(Boolean selectMostBetas, Boolean outputBestBetas) throws IllegalAccessException, IOException{
+	public void findBestFullModel() throws IllegalAccessException, IOException{
 		// set to -1 so that first loop can be initialized
 		double sumOfSquares = -1;
-		double nonZeroBetas = 0;
 		for (String modelName : getFullModelNames()){
 			InteractionModel fullModel = getInteractionModel(modelName);
-			if(getUseOLS()){
-				fullModel.calculateSumOfSquaresOLS(getExpessionValues(),false);
-			}else{
-				fullModel.calculateSumOfSquaresNNLS(getExpessionValues());
-			}
-
-			double nonZeroBetasCurrentModel = 0;
-			if(selectMostBetas || outputBestBetas){
-				double[] estimateRegressionParameters = fullModel.getEstimateRegressionParameters();
-				for(int i = 0; i < estimateRegressionParameters.length; i++){
-					// only count interaction term betas for most non zeros (interaction betas start from numberOfCelltypes +1
-					if (i > cellCount.getNumberOfCelltypes() && estimateRegressionParameters[i] > 0){
-						++nonZeroBetasCurrentModel;
-					};
-					if(estimateRegressionParameters[i] > bestBetas[i]){
-						bestBetas[i] = estimateRegressionParameters[i];
-					}
-				}
-			}
-
-			double fullModelSumOfSquares = fullModel.getSumOfSquares();
+			fullModel.calculateSumOfSquaresNNLS(getExpessionValues());
 			if (sumOfSquares == -1){
-				sumOfSquares = fullModelSumOfSquares;
+				sumOfSquares = fullModel.getSumOfSquares();
 			}
-			// first select the model with the most non-zero betas, if there is a tie select of those the ones with lowest RSS
-			if(selectMostBetas){
-				if (nonZeroBetasCurrentModel > nonZeroBetas || (nonZeroBetasCurrentModel == nonZeroBetas && fullModelSumOfSquares <= sumOfSquares)){
-					setBestFullModelName(fullModel.getModelName());
-					sumOfSquares = fullModelSumOfSquares;
-					nonZeroBetas = nonZeroBetasCurrentModel;
-				}
-				else{
-					removeInteractionModel(fullModel.getModelName());
-				}
+			if (fullModel.getSumOfSquares() <= sumOfSquares){
+				sumOfSquares = fullModel.getSumOfSquares();
+				setBestFullModelName(fullModel.getModelName());
 			}
-			// select model with lowest RSS
 			else{
-				if (fullModelSumOfSquares <= sumOfSquares){
-					setBestFullModelName(fullModel.getModelName());
-					sumOfSquares = fullModelSumOfSquares;
-				}
-				else{
-					removeInteractionModel(fullModel.getModelName());
-				}
+				removeInteractionModel(fullModel.getModelName());
 			}
 		}
-	}
 
-	/*
-	 * Go through all full models per celltype, calculate the regression statistics and 
-	 * select the model with the highest R2 as the new full model for that celltype
-	 */
-	public void findBestFullModel(Boolean useBaseModel, Boolean selectMostBetas, Boolean outputBestBetas) throws IllegalAccessException, IOException{
-		if(!useBaseModel){
-			// if not using the base model, should use the other findBestFullModel() function. 
-			// separated this into two functions because doing this per celltype makes it quite
-			// different application from other function
-			findBestFullModel(selectMostBetas, outputBestBetas);
-			return;
-		}
-
-
-		for(String celltypeName : this.getCellCount().getAllCelltypes()){
-			// set to -1 so that first loop can be initialized
-			double sumOfSquares = -1;
-			for (String modelName : fullModelNamesByCelltype.get(celltypeName)){
-				InteractionModel fullModel = getInteractionModel(modelName);
-
-				if(getUseOLS()){
-					fullModel.calculateSumOfSquaresOLS(getExpessionValues(),false);
-				}else{
-					fullModel.calculateSumOfSquaresNNLS(getExpessionValues());
-				}
-
-				if (sumOfSquares == -1){
-					sumOfSquares = fullModel.getSumOfSquares();
-				}
-				if (fullModel.getSumOfSquares() <= sumOfSquares){
-					sumOfSquares = fullModel.getSumOfSquares();
-					setBestFullModel(fullModel.getModelName(), celltypeName);
-				}
-				else{
-					removeInteractionModel(fullModel.getModelName());
-				}
-			}
-		}
 	}
 
 	/*
 	 * Go through all ct models, calculate the regression statistics and select the model with the highest R2 as the new ct model
 	 * TODO: merge with findBestFullModel()
 	 */
-	public void findBestCtModel(Boolean useBaseModel) throws IllegalAccessException, IOException{
+	public void findBestCtModel() throws IllegalAccessException, IOException{
 		// set to -1 so that first loop can be initialized
 		for(String celltype : celltypes){
 			double sumOfSquares = -1;
-			double nonZeroBetas = 0;
 			for (String modelName : getCtModelNames(celltype)){
-				if(modelName.contains("restModel")){
-					continue;
-				}
 				InteractionModel ctModel = getInteractionModel(modelName);
 				modelCelltype.put(modelName, celltype);
 
-				if(getUseOLS()){
-					ctModel.calculateSumOfSquaresOLS(getExpessionValues(),false);
-				}
-				else{
-					ctModel.calculateSumOfSquaresNNLS(getExpessionValues());
-				}
-				double nonZeroBetasCurrentModel = 0;
-				for(double d : ctModel.getEstimateRegressionParameters()){
-					if (d > 0){
-						++nonZeroBetasCurrentModel;
-					};
-				}
-				double ctSumOfSquares = ctModel.getSumOfSquares();
+				ctModel.calculateSumOfSquaresNNLS(getExpessionValues());
+
 				if (sumOfSquares == -1){
-					sumOfSquares = ctSumOfSquares;
-					nonZeroBetas = nonZeroBetasCurrentModel;
-				}
-				if(!useBaseModel){
-					setCtModelByGenotypeConfiguration();
-				}
-
-
-				if (nonZeroBetasCurrentModel > nonZeroBetas || (nonZeroBetasCurrentModel == nonZeroBetas && ctSumOfSquares <= sumOfSquares)){
-					sumOfSquares = ctSumOfSquares;
+					sumOfSquares = ctModel.getSumOfSquares();
 					setBestCtModel(ctModel.getCelltypeName(), ctModel.getModelName());
 				}
-				else{
-					// if the interaction model name of the full model is not the same as the model name of the 
-					// CT model, we want to remove the ct model data to preserve RAM. If it is the same,
-					// we keep it so that AIC can be calculated
-					if(!useBaseModel){
-						if(!ctModel.getModelName().equals(this.getCtModelSameGenotypeConfigurationAsBestFullModel(celltype, useBaseModel))){
-							removeInteractionModel(ctModel.getModelName());
-						}
-					}
+				setCtModelByGenotypeConfiguration();
+
+
+				double ctSumOfSquares = ctModel.getSumOfSquares();
+				if (ctSumOfSquares <= sumOfSquares){
+					sumOfSquares = ctSumOfSquares;
+					setBestCtModel(ctModel.getCelltypeName(), ctModel.getModelName());
 				}
 			}
 		}
@@ -436,48 +265,33 @@ public class InteractionModelCollection {
 	 * Make the genotype configurations that will be used for the interaction terms 
 	 */
 	private void makeConfigurations(String genotypeConfigurationType) throws IllegalAccessException{
-		if(getUseOLS()){
-			// if we use OLS we just use default genotype orientation (all 0's)
-			String fullModelGenotypeConfiguration = String.join("", Collections.nCopies(celltypes.size(), "0"));
-			this.genotypeConfigurationsFullModel.add(fullModelGenotypeConfiguration);
-			String ctModelGenotypeConfiguration = String.join("", Collections.nCopies(celltypes.size()-1, "0"));
-			this.genotypeConfigurationsCtModel.add(ctModelGenotypeConfiguration);
-			genotypeConfigMap.putIfAbsent(fullModelGenotypeConfiguration, new ArrayList<String>());
-			for(int i = 0; i < this.getCellCount().getNumberOfCelltypes(); i++){
-				genotypeConfigMap.get(fullModelGenotypeConfiguration).add("ctModel_"+this.getCellCount().getCelltype(i)+"_"+ctModelGenotypeConfiguration);
+
+		if(genotypeConfigurationType.equals("all")){
+			// this gets all possible combinations, e.g. if 3 celltypes: 000, 001, 010, 100, 011, 101, 110, 111
+			this.genotypeConfigurationsFullModel = Utils.binaryPermutations("",celltypes.size(), new ArrayList<String>());
+		}else if(genotypeConfigurationType.equals("two")){
+			// this gets two possible combinations, e.g. if 3 celltypes: 000, 111
+			this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "0")));
+			this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "1")));
+		}else if(genotypeConfigurationType.equals("one")){
+			// similar to "two", but can have one different, e.g. : 000, 111, 001, 010, 100
+			this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "0")));
+			this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "1")));
+			for(int i = 0; i < celltypes.size(); ++i){
+				StringBuilder genotypeConfiguration = new StringBuilder(String.join("", Collections.nCopies(celltypes.size(), "0")));
+				genotypeConfiguration.setCharAt(i, '1');
+				this.genotypeConfigurationsFullModel.add(genotypeConfiguration.toString());
 			}
-			return;
-		}
-		else if(getUseBaseModel()){
-			this.genotypeConfigurationsFullModel = Utils.binaryPermutations("",2, new ArrayList<String>());
-			this.genotypeConfigurationsCtModel = Utils.binaryPermutations("",1, new ArrayList<String>());
+			for(int i = 0; i < celltypes.size(); ++i){
+				StringBuilder genotypeConfiguration = new StringBuilder(String.join("", Collections.nCopies(celltypes.size(), "1")));
+				genotypeConfiguration.setCharAt(i, '0');
+				this.genotypeConfigurationsFullModel.add(genotypeConfiguration.toString());
+			}
 		}else{
-			if(genotypeConfigurationType.equals("all")){
-				// this gets all possible combinations, e.g. if 3 celltypes: 000, 001, 010, 100, 011, 101, 110, 111
-				this.genotypeConfigurationsFullModel = Utils.binaryPermutations("",celltypes.size(), new ArrayList<String>());
-			}else if(genotypeConfigurationType.equals("two")){
-				// this gets two possible combinations, e.g. if 3 celltypes: 000, 111
-				this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "0")));
-				this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "1")));
-			}else if(genotypeConfigurationType.equals("one")){
-				// similar to "two", but can have one different, e.g. : 000, 111, 001, 010, 100
-				this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "0")));
-				this.genotypeConfigurationsFullModel.add(String.join("", Collections.nCopies(celltypes.size(), "1")));
-				for(int i = 0; i < celltypes.size(); ++i){
-					StringBuilder genotypeConfiguration = new StringBuilder(String.join("", Collections.nCopies(celltypes.size(), "0")));
-					genotypeConfiguration.setCharAt(i, '1');
-					this.genotypeConfigurationsFullModel.add(genotypeConfiguration.toString());
-				}
-				for(int i = 0; i < celltypes.size(); ++i){
-					StringBuilder genotypeConfiguration = new StringBuilder(String.join("", Collections.nCopies(celltypes.size(), "1")));
-					genotypeConfiguration.setCharAt(i, '0');
-					this.genotypeConfigurationsFullModel.add(genotypeConfiguration.toString());
-				}
-			}else{
-				throw new RuntimeException("configurationType should be either \"all\" or \"two\", was: "+genotypeConfigurationType);
-			}
-			this.genotypeConfigurationsCtModel = Utils.binaryPermutations("",celltypes.size()-1, new ArrayList<String>());
+			throw new RuntimeException("configurationType should be either \"all\" or \"two\", was: "+genotypeConfigurationType);
 		}
+		this.genotypeConfigurationsCtModel = Utils.binaryPermutations("",celltypes.size()-1, new ArrayList<String>());
+
 
 		for(String genotypeConfiguration : genotypeConfigurationsFullModel){
 			genotypeConfigMap.putIfAbsent(genotypeConfiguration, new ArrayList<String>());
@@ -508,10 +322,6 @@ public class InteractionModelCollection {
 	 */
 	public void createObservedValueMatricesFullModel() 
 			throws IllegalAccessException{
-		if(this.getUseBaseModel()){
-			createObservedValueMatricesBaseModel();
-			return;
-		}
 		CellCount cellCount = getCellCount();
 		int numberOfCelltypes = cellCount.getNumberOfCelltypes();
 		int numberOfSamples = cellCount.getNumberOfSamples();
@@ -569,83 +379,6 @@ public class InteractionModelCollection {
 		}
 	}
 
-	/**
-	 * Construct the observed value matrices that are used for calculating the regression for the full model.
-	 * Add all permutations of genotypes/swappedGenotypes (swappedGenotypes -> 0=2, 2=0)
-	 * 
-	 * TODO: Move this to InteractionModel class. Also, merge overlapping code with createObservedValueMatricesCtModel
-	 * @throws IllegalAccessException 
-	 */
-	public void createObservedValueMatricesBaseModel() throws IllegalAccessException{		
-		CellCount cellCount = getCellCount();
-		int numberOfSamples = cellCount.getNumberOfSamples();
-		int numberOfCelltypes = cellCount.getNumberOfCelltypes();
-		// y ~ CC1 + (100-CC) + GT*CC + GT*(100-CC) so only 4 terms
-		int numberOfTerms = 4;
-
-		/* For every celltype we need to make four models,  with GT*CC flipped and GT*(100-CC) flipped
-		 * 
-		 * This loops over every celltype by index (celltypeIndex), and then makes the observation matrix so that
-		 * cc[celltypeIndex] + (100-cc[allIndexesExceptCelltypeIndex]) + GT*cc[celltypeIndex] + GT*(100-cc[allIndexesExceptCelltypeIndex])
-		 */
-		for(int celltypeIndex = 0; celltypeIndex < numberOfCelltypes; ++celltypeIndex){
-			for (String genotypeConfiguration : getGenotypeConfigurationsFullModel()){
-				InteractionModel fullModel = new InteractionModel(numberOfSamples, 
-						numberOfTerms);
-				fullModel.setGenotypeConfiguration(genotypeConfiguration);
-				String celltypeName = cellCount.getCelltype(celltypeIndex);
-				String modelName = String.format("fullModel_%s_%s", celltypeName, genotypeConfiguration);
-				fullModel.setModelName(modelName);
-				fullModel.setCelltypeName(celltypeName);
-
-				addInteractionModel(fullModel, modelName, true);
-
-				fullModel.addCelltypeVariablesIndex(new int[] {0,2});
-				fullModel.addCelltypeVariablesIndex(new int[] {1,3});
-				fullModel.addIndependentVariableName(celltypeName);
-				fullModel.addIndependentVariableName("100-"+celltypeName);
-				fullModel.addIndependentVariableName(celltypeName+":GT");
-				fullModel.addIndependentVariableName("100-"+celltypeName+":GT");
-
-				for (int sampleIndex = 0; sampleIndex <= numberOfSamples-1; ++sampleIndex) {
-					double celltypePerc = cellCount.getCellcountPercentages()[sampleIndex][celltypeIndex];
-					double celltypePercRest = 100-celltypePerc;
-
-					// if i (cell type index) is the same as m (model index), don't add the interaction term of celltype:GT
-					fullModel.addObservedValue(celltypePerc, sampleIndex, 0);
-					fullModel.addObservedValue(celltypePercRest, sampleIndex, 1);
-
-					// unlike with full model, here are only 2 GT's. For cc:GT and for (100-CC):GT
-					// check for which of the two is swapped, then set genotypes
-					char genotypeOrderAtCelltype = genotypeConfiguration.charAt(0);
-					char genotypeOrderAtRest = genotypeConfiguration.charAt(1);
-
-					double[] genotypesCelltype;
-					double[] genotypesRest;
-					if(genotypeOrderAtCelltype == '0'){
-						genotypesCelltype = getGenotypes();
-					} else{
-						genotypesCelltype = getSwappedGenotypes();
-					}
-					if(genotypeOrderAtRest == '0'){
-						genotypesRest = getGenotypes();
-					} else{
-						genotypesRest = getSwappedGenotypes();
-					}
-					try {
-						fullModel.addObservedValue(celltypePerc * genotypesCelltype[sampleIndex], sampleIndex, 2);
-						fullModel.addObservedValue(celltypePercRest * genotypesRest[sampleIndex], sampleIndex, 3);
-					} catch (ArrayIndexOutOfBoundsException error) {
-						throw new RuntimeException(
-								"The counts file and expression and/or genotype file do not have equal number of samples or QTLs",
-								error);
-					}
-				}
-				fullModel.setModelLength();
-			}
-		}
-	}
-
 	public void setCtModelByGenotypeConfiguration() throws IllegalAccessException{		
 		InteractionModel bestFullModel = this.getBestFullModel();
 		String bestFullModelgenotypeConfiguration = bestFullModel.getGenotypeConfiguration();
@@ -676,14 +409,9 @@ public class InteractionModelCollection {
 	 * @param genotypeOrder The order of genotypes to use, e.g. 010 means non swapped genotypes celltype 1, swapped genotypes celltype 2, non swapped genotypes celltype 3
 	 * 
 	 * TODO: Move this to InteractionModel class. Also, merge overlapping code with createObservedValueMatricesFullModel
-	 * @throws IOException 
 	 */
 	public void createObservedValueMatricesCtModels() 
-			throws IllegalAccessException, IOException{
-		if(this.getUseBaseModel()){
-			createObservedValueMatricesCtBaseModel();
-			return;
-		}
+			throws IllegalAccessException{
 		CellCount cellCount = getCellCount();
 		int numberOfCelltypes = cellCount.getNumberOfCelltypes();
 		int numberOfSamples = cellCount.getNumberOfSamples();
@@ -772,99 +500,6 @@ public class InteractionModelCollection {
 					genotypeCounter = cellCount.getNumberOfCelltypes();
 				}
 				ctModel.setModelLength();
-
-			}
-		}
-	}
-
-	public void createObservedValueMatricesCtBaseModel() throws IllegalAccessException, IOException{		
-		CellCount cellCount = getCellCount();
-		int numberOfSamples = cellCount.getNumberOfSamples();
-		int numberOfCelltypes = cellCount.getNumberOfCelltypes();
-		// y ~ CC1 + (100-CC) + GT*(100-CC) so only 3 terms
-		int numberOfTerms = 3;
-
-		/* For every celltype we need to make two models,  with and GT*(100-CC) flipped
-		 * 
-		 * This loops over every celltype by index (celltypeIndex), and then makes the observation matrix so that
-		 * cc[celltypeIndex] + (100-cc[allIndexesExceptCelltypeIndex]) + GT*(100-cc[allIndexesExceptCelltypeIndex])
-		 */
-		for(int celltypeIndex = 0; celltypeIndex < numberOfCelltypes; ++celltypeIndex){
-			for (String genotypeConfiguration : getGenotypeConfigurationsCtModel()){
-				InteractionModel ctModel = new InteractionModel(numberOfSamples, 
-						numberOfTerms);
-
-				InteractionModel restModel = new InteractionModel(numberOfSamples, 
-						numberOfTerms);
-				InteractionModel restModelSwapped = new InteractionModel(numberOfSamples, 
-						numberOfTerms);
-				ctModel.setGenotypeConfiguration(genotypeConfiguration);
-				String celltypeName = cellCount.getCelltype(celltypeIndex);
-
-
-				String modelName = String.format("ctModel_%s_%s", celltypeName, genotypeConfiguration);
-				String restModelName = String.format("ctModel_%s_%s_restModel", celltypeName, genotypeConfiguration);
-				ctModel.setModelName(modelName);
-
-				ctModel.setCelltypeName(celltypeName);
-				addInteractionModel(ctModel, modelName, false);
-
-				ctModel.addCelltypeVariablesIndex(new int[] {0});
-				ctModel.addCelltypeVariablesIndex(new int[] {1,3});
-				ctModel.addIndependentVariableName(celltypeName);
-				ctModel.addIndependentVariableName("100-"+celltypeName);
-				ctModel.addIndependentVariableName("100-"+celltypeName+":GT");
-
-
-				for (int sampleIndex = 0; sampleIndex <= numberOfSamples-1; ++sampleIndex) {
-					double celltypePerc = cellCount.getCellcountPercentages()[sampleIndex][celltypeIndex];
-					double celltypePercRest = 100-celltypePerc;
-
-					// if i (cell type index) is the same as m (model index), don't add the interaction term of celltype:GT
-					ctModel.addObservedValue(celltypePerc, sampleIndex, 0);
-					ctModel.addObservedValue(celltypePercRest, sampleIndex, 1);
-					restModel.addObservedValue(celltypePerc, sampleIndex, 0);
-					restModel.addObservedValue(celltypePercRest, sampleIndex, 1);
-					restModelSwapped.addObservedValue(celltypePerc, sampleIndex, 0);
-					restModelSwapped.addObservedValue(celltypePercRest, sampleIndex, 1);
-
-					double[] genotypes;
-					// There is only on GT for the CT model, cause y ~ cc + (100-cc) + (100-cc):GT
-					char genotypeOrderAtCelltype = genotypeConfiguration.charAt(0);
-					// Use the binary string permutation to decide if the genotype should be swapped or not
-					if(genotypeOrderAtCelltype == '0'){
-						genotypes = getGenotypes();
-					} else{
-						genotypes = getSwappedGenotypes();
-					}
-
-					try {
-						ctModel.addObservedValue(celltypePercRest * genotypes[sampleIndex], sampleIndex, 2);
-
-
-						// Two restModels cause don't know which one is the best
-						genotypes = getGenotypes();
-						restModel.addObservedValue(celltypePerc * genotypes[sampleIndex], sampleIndex, 2);
-						genotypes = getSwappedGenotypes();
-						restModelSwapped.addObservedValue(celltypePerc * genotypes[sampleIndex], sampleIndex, 2);
-
-					} catch (ArrayIndexOutOfBoundsException error) {
-						throw new RuntimeException(
-								"The counts file and expression and/or genotype file do not have equal number of samples or QTLs",
-								error);
-					}
-				}
-				restModel.calculateSumOfSquaresNNLS(getExpessionValues());
-				restModelSwapped.calculateSumOfSquaresNNLS(getExpessionValues());
-
-				ctModel.setModelLength();
-				if(restModel.getSumOfSquares() < restModelSwapped.getSumOfSquares()){
-					addInteractionModel(restModel, restModelName, false);
-				}
-				else{
-					addInteractionModel(restModelSwapped, restModelName, false);
-				}
-				ctModel.setRestModel(restModelName);
 
 			}
 		}
