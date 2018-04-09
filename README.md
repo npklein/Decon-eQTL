@@ -1,4 +1,4 @@
-#NOTE: Development has moved to https://github.com/molgenis/systemsgenetics/tree/master/Decon2
+# NOTE: Development has moved to https://github.com/molgenis/systemsgenetics/tree/master/Decon2
 
 
 Authors: Raúl Aguirre-Gamboa and Niek de Klein
